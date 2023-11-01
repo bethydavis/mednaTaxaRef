@@ -1,2 +1,2 @@
-# MeDNAWorkflow
-Repo for scripts and Rmds related to the Maine eDNA reference library workflow
+# mednaTaxaRef
+Development of an R toolset to generate reference databases for use in Maine-eDNA sequence analyses based on merging existing functionalities
