@@ -1,0 +1,28 @@
+{
+    "id": "1247A1DC",
+    "path": null,
+    "project_path": null,
+    "type": "object_explorer",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1709949513660.0,
+    "source_on_save": false,
+    "relative_order": 4,
+    "properties": {
+        "id": "54c343bb4b964f7eb8c49bb62d429471",
+        "name": "splitNames",
+        "title": "splitNames",
+        "language": "R",
+        "source_window_id": "",
+        "Source": "Source"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1637881332632,
+    "encoding": "",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1709949513660,
+    "read_only": false,
+    "read_only_alternatives": []
+}
