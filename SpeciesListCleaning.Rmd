@@ -257,12 +257,9 @@ library(tidyverse)
 library(taxize)
 library(rotl)
 library(stringi)
-
-install.packages("tidyverse")
-
 ```
-Load in the SpeciesList_MetaShareable file (as .csv, only the first tab)
 
+Load in the SpeciesList_MetaShareable file (as .csv, only the first tab)
 ```{r loadin}
 listbase <- read.csv("C:/Users/bydav/Desktop/SpeciesListMeta.csv", header = TRUE, encoding = 'UTF-8')
 ```
@@ -341,6 +338,18 @@ for (i in filter) {
 beep(sound = "wilhelm")
 ```
 
+figure out how to save this type of result with the list intact
+```{r}
+library(data.table)
+
+fwrite(metadf, "C:\\Users\\bydav\\Desktop\\eukaryalist.csv")
+
+# this has the source lists as numbers separated with |, which isn't ideal but honestly better than previous attempts.
+testload <- read.csv("C:\\Users\\bydav\\Desktop\\eukaryalist.csv")
+testload
+```
+
+
 ```{r verify}
 # Test a search query
 metadf[metadf$SpeciesBinomial == "Salmo salar", ]
@@ -352,27 +361,21 @@ Using the same GBIF version for consistency, found here: https://doi.org/10.1546
 
 ```{r}
 GBIF <- read.table('C:/Users/bydav/Desktop/GBIFNovSpeciesList.csv', sep = '\t', fill = TRUE, header = TRUE, encoding = 'UTF-8')
-beep(sound = "mario")
-
 
 GBIFspecies <- unique(GBIF[, 10])
-beep(sound = "wilhelm")
 
 GBIFResults <- as.data.frame(GBIFspecies)
-beep(sound = "wilhelm")
 
 colnames(GBIFResults) <- c("Species_Name")
 
-
 GBIFdf <- GBIFResults %>%
   mutate(Source = 29)
-beep(sound = "wilhelm")
-
-head(GBIFdf)
-head(eukaryalist)
 
 updatedeukarya <- (rbind(GBIFdf, eukaryalist))
 beep(sound = "fanfare")
+
+fwrite(updatedeukarya, "C:\\Users\\bydav\\Desktop\\updatedeukaryalist.csv")
+
 ```
 
 ```{r updatedloop}
@@ -413,7 +416,6 @@ which(letterresult)
 
 # looks like a lot of these are rows that only have Genus (not sure why they don't count as letters, but it at least highlights that they're still there)
 
-
 # Remove all rows that don't have whitespace in the SpeciesBinomial - this should leave us only with the species that have actual species binomials
 speciesqc <- metadf2 %>% filter(str_detect(str_trim(SpeciesBinomial), "\\s+"))
 
@@ -436,12 +438,12 @@ exeunt <- c('Unknown', 'Unidentified', 'Undetermined', 'Undetermiend')
 speciesqc2 <- speciesqc[!grepl(paste(exeunt, collapse='|'), speciesqc$SpeciesBinomial),]
 
 # Check for weird rows again
-speciesqc2check <- letters_only(speciesqc2$SpeciesBinomial)
+#speciesqc2check <- letters_only(speciesqc2$SpeciesBinomial)
 
 # Get a count of how many have non-letters - 2506
-sum(speciesqc2check, na.rm = TRUE)
+#sum(speciesqc2check, na.rm = TRUE)
 
-which(speciesqc2check)
+#which(speciesqc2check)
 ```
 Still finding weird symbols, as well as some . and \ that the letters_only isn't noticing
 
@@ -450,6 +452,9 @@ Borrowing the following from rominger_codathon
 speciesqc2$SpeciesBinomial<- stri_trans_general(speciesqc2$SpeciesBinomial, "latin-ascii")
 
 speciesqc2 <- speciesqc2[!grepl('sp\\.|cf\\.|f\\.', speciesqc2$SpeciesBinomial), , drop = FALSE]
+
+fwrite(speciesqc2, "C:\\Users\\bydav\\Desktop\\MetaListPreTaxonomy.csv")
+
 ```
 
 ###########
@@ -487,7 +492,7 @@ ranks <- c('kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species')
 tempDF <- as.data.frame(matrix(NA, nrow = 1, ncol = length(ranks)))
 names(tempDF) <- ranks
 
-higherTax <- classification(xclean$matched_name2, db = 'ncbi')
+higherTax <- taxizedb::classification(xclean$matched_name2, db = 'ncbi')
 
 ??classification
 
