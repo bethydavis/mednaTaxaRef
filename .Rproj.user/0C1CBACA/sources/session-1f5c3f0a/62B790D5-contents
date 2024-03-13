@@ -106,7 +106,7 @@ subsettest <- read.csv('C:/Users/bydav/Desktop/RefLib/MaineSpeciesList_Clean_Sub
 
 ```{r}
 if (!require("rentrez")) {install.packages("rentrez"); require("rentrez")} # Query ENTREZ databases and download accessions
-set_entrez_key("c832cec80a76de1a62694193df8eb51d6608")
+set_entrez_key("")
 ```
 
 Think this should work, but hold off on running it on the full list until the cleaning of duplicates is done
@@ -249,14 +249,14 @@ cleanlist <- write.csv(encodeunique, "C:/Users/bydav/Desktop/CleanSpecies.csv")
 
 What is the best way to keep the source metadata with the species name so it's searchable in maybe a shiny app table?
 
-load packages
-```{r loadpackage}
-library(beepr)
-library(dplyr)
-library(tidyverse)
-library(taxize)
-library(rotl)
-library(stringi)
+## Load packages
+```{r loadpackages}
+library(beepr) # to notify when long chunks are done
+library(dplyr) # for cleaning
+library(tidyverse) # for cleaning
+library(taxize) # for taxonomy
+library(rotl) # for taxonomy
+library(stringi) # for cleaning
 ```
 
 Load in the SpeciesList_MetaShareable file (as .csv, only the first tab)
@@ -265,14 +265,17 @@ listbase <- read.csv("C:/Users/bydav/Desktop/SpeciesListMeta.csv", header = TRUE
 ```
 
 We want to remove the bacteria and fungi. Easiest way to do that is remove all rows where I know the source was those taxa-specific sources, then can do further cleaning once the higher taxonomy is assigned
-```{r}
+```{r eukaryaonly}
 eukaryalist <- subset(listbase, !(Source %in% c(2,3,16)))
+
+# specieslist without the removals:
+eukaryalist <- listbase
 ```
 
 There are 2 problems. In order to fill out the higher taxonomy, it'll be easiest to remove the sources so the list can be deduplicated, and the higher taxonomy can be searched and added without being as massive a list. However, then I need to re-add the sources somehow. I'll first try to compress the source information into a single row. If that's possible, the list can be simplified to unique occurrences while still preserving the source metadata.
 
-
-```{r teststeps}
+This chunk tests the different steps involved in consolidating and maintaining the source metadata 
+```{r sourceloop_testing}
 # Initial query on a species I know has more than one source to test the search function
 eukaryalist[eukaryalist$Species_Name == "Salmo salar", ]
 
@@ -317,8 +320,8 @@ df
 ```
 
 
-Now that the steps are built, make a loop and fill in a new dataframe
-```{r}
+Now that the steps are built, make a loop and fill in a new dataframe with the species binomial and source information
+```{r sourceloop}
 # Create a list of unique names
 filter <- unique(eukaryalist$Species_Name)
 
@@ -327,7 +330,7 @@ metadf <- data.frame(matrix(ncol = 2, nrow = 0))
 colnames(metadf) <- c('SpeciesBinomial', 'SourceList')
 metadf
 
-
+# Loop to fill in the new dataframe with species and source info
 for (i in filter) {
   tempsearch <- eukaryalist[eukaryalist$Species_Name == i, ]
   tempsource <- list(c(tempsearch$Source))
@@ -335,50 +338,44 @@ for (i in filter) {
   metadf[nrow(metadf), ]$SourceList <- tempsource
 }
 
+# notify when done
 beep(sound = "wilhelm")
 ```
 
-figure out how to save this type of result with the list intact
-```{r}
-library(data.table)
+Save this intermediate list before we add the GBIF data.
+```{r save_intermediate}
+saveRDS(metadf, file = "C:\\Users\\bydav\\Desktop\\nonGBIFlist.RDS")
 
-fwrite(metadf, "C:\\Users\\bydav\\Desktop\\eukaryalist.csv")
-
-# this has the source lists as numbers separated with |, which isn't ideal but honestly better than previous attempts.
-testload <- read.csv("C:\\Users\\bydav\\Desktop\\eukaryalist.csv")
-testload
+# RDS files can be called with readRDS(file = "")
 ```
 
-
-```{r verify}
-# Test a search query
-metadf[metadf$SpeciesBinomial == "Salmo salar", ]
-```
-
-This doesn't include the taxa from GBIF though. With the loop running, I can pull in the GBIF data file, extract only the unique species names, assign them a source ID, and merge with the eukaryalist, then re-run the loop. There was the July list, but it doesn't contain source information, and so I can't tell what's from GBIF and what's not
+This doesn't include the taxa from GBIF though. With the loop running, I can pull in the GBIF data file, extract only the unique species names, assign them a source ID, and merge with the eukaryalist, then re-run the loop. 
 
 Using the same GBIF version for consistency, found here: https://doi.org/10.15468/dl.vjz7em 
 
-```{r}
+```{r appendGBIF}
 GBIF <- read.table('C:/Users/bydav/Desktop/GBIFNovSpeciesList.csv', sep = '\t', fill = TRUE, header = TRUE, encoding = 'UTF-8')
 
+# Only pull the species names - we don't need any other info here
 GBIFspecies <- unique(GBIF[, 10])
 
+# Coerce to dataframe
 GBIFResults <- as.data.frame(GBIFspecies)
 
+# Update column name
 colnames(GBIFResults) <- c("Species_Name")
 
+# add a column for "Source" and add 29 (the source code for GBIF) to each row
 GBIFdf <- GBIFResults %>%
   mutate(Source = 29)
 
+# Append the GBIF list to our eukaryalist and set a notification for when it's done
 updatedeukarya <- (rbind(GBIFdf, eukaryalist))
 beep(sound = "fanfare")
 
-fwrite(updatedeukarya, "C:\\Users\\bydav\\Desktop\\updatedeukaryalist.csv")
-
 ```
 
-```{r updatedloop}
+```{r fulllist_sourceloop}
 
 # Create a list of unique names
 filter2 <- unique(updatedeukarya$Species_Name)
@@ -397,73 +394,50 @@ for (i in filter2) {
 }
 
 beep(sound = "wilhelm")
-
-head(metadf2)
 ```
 
 
-I want to check for any characters in Species_Name that do not belong to the english alphabet
-```{r}
-letters_only <- function(x) !grepl("[^A-Za-z]", x)
+Now that the lists are combined, we'll go back in to deal with lingering cleaning issues
+```{r fulllist_cleaning}
 
-letterresult <- letters_only(metadf2$SpeciesBinomial)
-
-# Get a count of how many have non-letters - 2506
-sum(letterresult, na.rm = TRUE)
-
-# Identify some examples to check
-which(letterresult)
-
-# looks like a lot of these are rows that only have Genus (not sure why they don't count as letters, but it at least highlights that they're still there)
-
-# Remove all rows that don't have whitespace in the SpeciesBinomial - this should leave us only with the species that have actual species binomials
+# Remove all rows that don't have any whitespace - this should remove the Genus-only entries
 speciesqc <- metadf2 %>% filter(str_detect(str_trim(SpeciesBinomial), "\\s+"))
 
-# Check for presence of non-letters again
-speciesqccheck <- letters_only(speciesqc$SpeciesBinomial)
+# Force encoding
+speciesqc$SpeciesBinomial<- stri_trans_general(speciesqc$SpeciesBinomial, "latin-ascii")
 
-# Get a count of how many have non-letters - 43
-sum(speciesqccheck, na.rm = TRUE)
-```
+# Trim leading and tailing spaces
+speciesqc$SpeciesBinomial <- trimws(speciesqc$SpeciesBinomial, which = c("both"))
 
-
-Several are included that are listed as "Unknown <species>" or "Unidentified <species>", "Undetermined", "Undetermiend"
-these rows can also be removed
-
-```{r}
-#define vector of strings
+#There are several entries that contain varieties of 'unknown' that we want to remove. Define vector of strings
 exeunt <- c('Unknown', 'Unidentified', 'Undetermined', 'Undetermiend')
 
-#remove rows that contain any string in the vector in the team column
-speciesqc2 <- speciesqc[!grepl(paste(exeunt, collapse='|'), speciesqc$SpeciesBinomial),]
+  #remove rows that contain any string in the vector in the team column
+speciesqc <- speciesqc[!grepl(paste(exeunt, collapse='|'), speciesqc$SpeciesBinomial),]
 
-# Check for weird rows again
-#speciesqc2check <- letters_only(speciesqc2$SpeciesBinomial)
+# Remove all symbols/characters that aren't spaces or alphanumeric characters - from rominger_codathon
+speciesqc$SpeciesBinomial <- gsub("[^[:alnum:][:space:]]", "", speciesqc$SpeciesBinomial)
 
-# Get a count of how many have non-letters - 2506
-#sum(speciesqc2check, na.rm = TRUE)
+speciesqc <- speciesqc[!grepl('sp\\.|cf\\.|f\\.', speciesqc$SpeciesBinomial), , drop = FALSE]
 
-#which(speciesqc2check)
-```
-Still finding weird symbols, as well as some . and \ that the letters_only isn't noticing
+# Papilio canadensis X glaucus causes an Internal Server Error for some reason. Not related to either a lone character or a long string. 
+# Try overwriting it.
 
-Borrowing the following from rominger_codathon
-```{r}
-speciesqc2$SpeciesBinomial<- stri_trans_general(speciesqc2$SpeciesBinomial, "latin-ascii")
+# Identify which row it's in
+speciesqc[speciesqc$SpeciesBinomial == "Papilio canadensis X glaucus", ]
+# Overwrite
+speciesqc[24219, 1] = "Papilio canadensis glaucus"
 
-speciesqc2 <- speciesqc2[!grepl('sp\\.|cf\\.|f\\.', speciesqc2$SpeciesBinomial), , drop = FALSE]
-
-fwrite(speciesqc2, "C:\\Users\\bydav\\Desktop\\MetaListPreTaxonomy.csv")
+# Save the cleaned output as another RDS
+saveRDS(updatedeukarya, file = "C:\\Users\\bydav\\Desktop\\updatedspecieslist.RDS")
 
 ```
 
-###########
-
-Check validity of names, especially cleaning up typos
-```{r}
+Check validity of names, especially cleaning up typos. Can set the vectors as large as 1000, but use smaller intervals for troubleshooting and checking where errors occur
+```{r fulllist_gnrresolve}
 # break-up names into vectors of at most 500
-splitNames <- split(speciesqc2$SpeciesBinomial, 
-                    ceiling(seq_along(speciesqc2$SpeciesBinomial)/500))
+splitNames <- split(speciesqc$SpeciesBinomial, 
+                    ceiling(seq_along(speciesqc$SpeciesBinomial)/1000))
 
 
 # make a list to populate with results from `gnr_resolve`
@@ -475,7 +449,7 @@ for(i in 1:length(xclean)) {
   xclean[[i]] <- gnr_resolve(splitNames[[i]], 
                              resolve_once = TRUE, preferred_data_sources = 4,
                              best_match_only = TRUE, 
-                             canonical = TRUE, http = 'post')
+                             canonical = TRUE, http = 'post', fields = "all")
   cat('# ----\n')
   cat(i, '\n')
   print(dim(xclean[[i]]))
@@ -483,42 +457,144 @@ for(i in 1:length(xclean)) {
 }
 beep(sound = "wilhelm")
 
-# Crashes after 47. not a length issue.
+# Save as an intermediate RDS
+saveRDS(xclean, file = "C:\\Users\\bydav\\Desktop\\GNRSpList.RDS")
+```
 
-xclean[["1"]]
+Need to now convert xclean back to a dataframe so we can continue - code adapted from Erin's naming script
+```{r fullist_dfcoerce}
+splist01 <- as.data.frame(xclean[[1]])
+splist02 <- as.data.frame(xclean[[2]])
+splist03 <- as.data.frame(xclean[[3]])
+splist04 <- as.data.frame(xclean[[4]])
+splist05 <- as.data.frame(xclean[[5]])
+splist06 <- as.data.frame(xclean[[6]])
+splist07 <- as.data.frame(xclean[[7]])
+splist08 <- as.data.frame(xclean[[8]])
+splist09 <- as.data.frame(xclean[[9]])
+splist10 <- as.data.frame(xclean[[10]])
+splist11 <- as.data.frame(xclean[[11]])
+splist12 <- as.data.frame(xclean[[12]])
+splist13 <- as.data.frame(xclean[[13]])
+splist14 <- as.data.frame(xclean[[14]])
+splist15 <- as.data.frame(xclean[[15]])
+splist16 <- as.data.frame(xclean[[16]])
+splist17 <- as.data.frame(xclean[[17]])
+splist18 <- as.data.frame(xclean[[18]])
+splist19 <- as.data.frame(xclean[[19]])
+splist20 <- as.data.frame(xclean[[20]])
+splist21 <- as.data.frame(xclean[[21]])
+splist22 <- as.data.frame(xclean[[22]])
+splist23 <- as.data.frame(xclean[[23]])
+splist24 <- as.data.frame(xclean[[24]])
+splist25 <- as.data.frame(xclean[[25]])
+splist26 <- as.data.frame(xclean[[26]])
+splist27 <- as.data.frame(xclean[[27]])
+splist28 <- as.data.frame(xclean[[28]])
+splist29 <- as.data.frame(xclean[[29]])
 
-# higher taxonomy
-ranks <- c('kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species')
-tempDF <- as.data.frame(matrix(NA, nrow = 1, ncol = length(ranks)))
-names(tempDF) <- ranks
+splist <- rbind(splist01, splist02, splist03, splist04, splist05, splist06, splist07, splist08, splist09, splist10, splist11, splist12, splist13, splist14, splist15,splist16, splist17, splist18, splist19, splist20, splist21, splist22, splist23, splist24, splist25, splist26, splist27, splist28, splist29)
 
-higherTax <- taxizedb::classification(xclean$matched_name2, db = 'ncbi')
+saveRDS(splist, file = "C:\\Users\\bydav\\Desktop\\GNRSpDF.RDS")
+```
 
-??classification
 
-l <- lapply(higherTax, function(r) {
-  if(!inherits(r, 'data.frame')) {
-    return(tempDF)
-  } else {
-    y <- r[r$rank %in% ranks, ]
-    d <- tempDF
-    d[1, y$rank] <- y$name
-    
-    return(d)
+```{r fulllist_format}
+# Update formatting for match_value and match_type
+splist$match_value <- as.factor(splist$match_value)
+splist$match_type <- as.factor(splist$match_type)
+
+# Taxa that could only be identified to genus + deduplication
+splist_GenusOnly <- subset(splist, match_value == "Could only match genus")
+# fill in genus name
+splist_GenusOnly$genus <- vapply(strsplit(splist_GenusOnly$matched_name," "), `[`, 1, FUN.VALUE=character(1)) 
+splist_UniqueGenusOnly <- splist_GenusOnly[!duplicated(splist_GenusOnly$genus),]
+
+# Taxa that could be identified to species + deduplication
+splist_Species <- subset(splist, match_value != "Could only match genus")
+splist_UniqueSpecies <- splist_Species[!duplicated(splist_Species$matched_name),]
+splist_UniqueSpecies$superkingdom <- "na"; splist_UniqueSpecies$kingdom <- "na"; 
+splist_UniqueSpecies$phylum <- "na"; splist_UniqueSpecies$class <- "na";
+splist_UniqueSpecies$order <- "na"; splist_UniqueSpecies$family <- "na";
+splist_UniqueSpecies$genus <- "na"; splist_UniqueSpecies$species <- "na"
+
+s=1
+for (s in 1:dim(splist_UniqueSpecies)[1]) {
+  paths <- unlist(strsplit(splist_UniqueSpecies$classification_path[s], "|", fixed=TRUE))
+  ranks <- unlist(strsplit(splist_UniqueSpecies$classification_path_ranks[s], "|", fixed=TRUE))                
+  temp <- as.data.frame(cbind(paths, ranks))
+  
+  if (length(which(temp$ranks=="superkingdom"))>0){
+  splist_UniqueSpecies$superkingdom[s] <- temp[which(temp$ranks=="superkingdom"), 1]
   }
-})
+  if (length(which(temp$ranks=="kingdom"))>0){
+  splist_UniqueSpecies$kingdom[s] <- temp[which(temp$ranks=="kingdom"), 1]
+  }
+  if (length(which(temp$ranks=="phylum"))>0){
+  splist_UniqueSpecies$phylum[s] <- temp[which(temp$ranks=="phylum"), 1]
+  }
+  if (length(which(temp$ranks=="class"))>0){
+  splist_UniqueSpecies$class[s] <- temp[which(temp$ranks=="class"), 1]
+  }
+  if (length(which(temp$ranks=="order"))>0){
+  splist_UniqueSpecies$order[s] <- temp[which(temp$ranks=="order"), 1]
+  }
+  if (length(which(temp$ranks=="family"))>0){
+  splist_UniqueSpecies$family[s] <- temp[which(temp$ranks=="family"), 1]
+  }
+  if (length(which(temp$ranks=="genus"))>0){
+  splist_UniqueSpecies$genus[s] <- temp[which(temp$ranks=="genus"), 1]
+  }
+  if (length(which(temp$ranks=="species"))>0){
+  splist_UniqueSpecies$species[s] <- temp[which(temp$ranks=="species"), 1]
+  }
+  
+  rm(paths, ranks, temp)
+  s=s+1
+}
+beep(sound = "fanfare")
 
-taxTable <- do.call(rbind, l)
-rownames(taxTable) <- NULL
-beep(sound = "wilhelm")
+# Save the splist_UniqueGenusOnly and splist_UniqueSpecies outputs
+saveRDS(splist_UniqueGenusOnly, file = "C:\\Users\\bydav\\Desktop\\GNRSpList_GenusOnly.RDS")
+saveRDS(splist_UniqueSpecies, file = "C:\\Users\\bydav\\Desktop\\GNRSpList_Species.RDS")
 ```
 
-####
+The remaining cleaning steps we want are to check which species entries from speciesqc didn't find a gnr_resolve match and were left out, to reconnect the source metadata for the species that were found, and create species lists that don't include bacteria and/or fungi
+```{r fulllist_isolate}
 
+# Locate the species binomials that were left out after GNR resolve.
+sp_unID <- setdiff(speciesqc$SpeciesBinomial, splist_UniqueSpecies$user_supplied_name)
+saveRDS(sp_unID, file = "C:\\Users\\bydav\\Desktop\\Unidentified_Species.RDS")
 
+# Add source info to the GNR_resolved names
+SpList_wSource <- inner_join(
+  splist_UniqueSpecies,
+  speciesqc,
+  by = join_by(user_supplied_name == SpeciesBinomial),
+  na_matches = c("never"),
+  multiple = "first",
+  unmatched = "drop",
+  relationship = "many-to-many"
+)
+  
+# Remove bacteria but not fungi
+eukaryota <- subset(SpList_wSource, superkingdom == "Eukaryota")
+
+# Save output without bacteria
+saveRDS(eukaryota, file = "C:\\Users\\bydav\\Desktop\\GNREukaryotaList.RDS")
+
+# Remove fungi but not bacteria
+nofungusamongus <- subset(SpList_wSource, kingdom != "Fungi")
+
+# Save output without fungi
+saveRDS(nofungusamongus, file = "C:\\Users\\bydav\\Desktop\\GNRNoFungusSpeciesList.RDS")
+
+# Remove bacteria and not fungi
+clean_eukaryota <- subset(eukaryota, kingdom != "Fungi")
+
+# Save output without bacteria
+saveRDS(clean_eukaryota, file = "C:\\Users\\bydav\\Desktop\\GNREukaryota_NoFungus.RDS")
 ```
-
-
 
 
 
