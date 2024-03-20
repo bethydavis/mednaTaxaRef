@@ -338,6 +338,9 @@ for (i in filter) {
   metadf[nrow(metadf), ]$SourceList <- tempsource
 }
 
+# convert source column to character, then v to read it back in as a list (as a function)
+paste(collapse = ";")
+
 # notify when done
 beep(sound = "wilhelm")
 ```
