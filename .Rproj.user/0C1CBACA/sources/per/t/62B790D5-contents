@@ -338,6 +338,9 @@ for (i in filter) {
   metadf[nrow(metadf), ]$SourceList <- tempsource
 }
 
+# convert source column to character, then v to read it back in as a list (as a function)
+paste(collapse = ";")
+
 # notify when done
 beep(sound = "wilhelm")
 ```
@@ -347,6 +350,7 @@ Save this intermediate list before we add the GBIF data.
 saveRDS(metadf, file = "C:\\Users\\bydav\\Desktop\\nonGBIFlist.RDS")
 
 # RDS files can be called with readRDS(file = "")
+nonGBIFlist = readRDS(file = "C:\\Users\\bydav\\Desktop\\SpeciesList_Cleaning2024/nonGBIFlist.RDS")
 ```
 
 This doesn't include the taxa from GBIF though. With the loop running, I can pull in the GBIF data file, extract only the unique species names, assign them a source ID, and merge with the eukaryalist, then re-run the loop. 
@@ -354,7 +358,7 @@ This doesn't include the taxa from GBIF though. With the loop running, I can pul
 Using the same GBIF version for consistency, found here: https://doi.org/10.15468/dl.vjz7em 
 
 ```{r appendGBIF}
-GBIF <- read.table('C:/Users/bydav/Desktop/GBIFNovSpeciesList.csv', sep = '\t', fill = TRUE, header = TRUE, encoding = 'UTF-8')
+GBIF <- read.table('C:/Users/bydav/Desktop/SpeciesList_Cleaning2024/GBIFNovSpeciesList.csv', sep = '\t', fill = TRUE, header = TRUE, encoding = 'UTF-8')
 
 # Only pull the species names - we don't need any other info here
 GBIFspecies <- unique(GBIF[, 10])
@@ -363,22 +367,28 @@ GBIFspecies <- unique(GBIF[, 10])
 GBIFResults <- as.data.frame(GBIFspecies)
 
 # Update column name
-colnames(GBIFResults) <- c("Species_Name")
+colnames(GBIFResults) <- c("SpeciesBinomial")
+
+??colnames
 
 # add a column for "Source" and add 29 (the source code for GBIF) to each row
 GBIFdf <- GBIFResults %>%
-  mutate(Source = 29)
+  mutate(SourceList = 29)
 
+
+head(GBIFdf)
 # Append the GBIF list to our eukaryalist and set a notification for when it's done
-updatedeukarya <- (rbind(GBIFdf, eukaryalist))
+updatedeukarya <- (rbind(GBIFdf, nonGBIFlist))
 beep(sound = "fanfare")
 
+
+head(updatedeukarya)
 ```
 
 ```{r fulllist_sourceloop}
 
 # Create a list of unique names
-filter2 <- unique(updatedeukarya$Species_Name)
+filter2 <- unique(updatedeukarya$SpeciesBinomial)
 
 # prep a new dataframe
 metadf2 <- data.frame(matrix(ncol = 2, nrow = 0))
@@ -387,9 +397,9 @@ metadf2
 
 
 for (i in filter2) {
-  tempsearch <- updatedeukarya[updatedeukarya$Species_Name == i, ]
-  tempsource <- list(c(tempsearch$Source))
-  metadf2[nrow(metadf2) + 1,] = c(unique(tempsearch$Species_Name), 0)
+  tempsearch <- updatedeukarya[updatedeukarya$SpeciesBinomial == i, ]
+  tempsource <- list(c(tempsearch$SourceList))
+  metadf2[nrow(metadf2) + 1,] = c(unique(tempsearch$SpeciesBinomial), 0)
   metadf2[nrow(metadf2), ]$SourceList <- tempsource
 }
 
@@ -429,8 +439,7 @@ speciesqc[speciesqc$SpeciesBinomial == "Papilio canadensis X glaucus", ]
 speciesqc[24219, 1] = "Papilio canadensis glaucus"
 
 # Save the cleaned output as another RDS
-saveRDS(updatedeukarya, file = "C:\\Users\\bydav\\Desktop\\updatedspecieslist.RDS")
-
+#saveRDS(updatedeukarya, file = "C:\\Users\\bydav\\Desktop\\updatedspecieslist.RDS")
 ```
 
 Check validity of names, especially cleaning up typos. Can set the vectors as large as 1000, but use smaller intervals for troubleshooting and checking where errors occur
@@ -443,11 +452,13 @@ splitNames <- split(speciesqc$SpeciesBinomial,
 # make a list to populate with results from `gnr_resolve`
 xclean <- vector('list', length(splitNames))
 
+sources <- c(4, 9, 11, 12, 44)
+
 for(i in 1:length(xclean)) {  
   # `preferred_data_source = 4` is for NCBI
   # set `http = 'post'` for large query
   xclean[[i]] <- gnr_resolve(splitNames[[i]], 
-                             resolve_once = TRUE, preferred_data_sources = 4,
+                             resolve_once = TRUE, preferred_data_sources = sources,
                              best_match_only = TRUE, 
                              canonical = TRUE, http = 'post', fields = "all")
   cat('# ----\n')
@@ -457,6 +468,8 @@ for(i in 1:length(xclean)) {
 }
 beep(sound = "wilhelm")
 
+
+sourcefull <- gnr_datasources()
 # Save as an intermediate RDS
 saveRDS(xclean, file = "C:\\Users\\bydav\\Desktop\\GNRSpList.RDS")
 ```
@@ -495,7 +508,18 @@ splist29 <- as.data.frame(xclean[[29]])
 
 splist <- rbind(splist01, splist02, splist03, splist04, splist05, splist06, splist07, splist08, splist09, splist10, splist11, splist12, splist13, splist14, splist15,splist16, splist17, splist18, splist19, splist20, splist21, splist22, splist23, splist24, splist25, splist26, splist27, splist28, splist29)
 
-saveRDS(splist, file = "C:\\Users\\bydav\\Desktop\\GNRSpDF.RDS")
+# Separate the ones with different numbers of columns
+splistv2 <- rbind(splist01, splist03, splist05, splist06, splist07, splist08, splist12, splist13, splist15, splist16, splist17)
+
+splistv1 <- rbind(splist02, splist04, splist09, splist10, splist11, splist14, splist18, splist19, splist20, splist21, splist22, splist23, splist24, splist25, splist26, splist27, splist28, splist29)
+
+
+splistv11 <- subset(splistv1[1:17])
+
+splist <- rbind(splistv11, splistv2)
+
+head(splist18[18])
+#saveRDS(splist, file = "C:\\Users\\bydav\\Desktop\\GNRSpDF.RDS")
 ```
 
 
@@ -576,7 +600,14 @@ SpList_wSource <- inner_join(
   unmatched = "drop",
   relationship = "many-to-many"
 )
+
+# Save full output
+saveRDS(splist_UniqueSpecies, file = "C://Users//bydav//Desktop//GNRMaineSpeciesList.RDS")
   
+# pick out just the found species to test with Erin's workflow:
+write.csv(subset(splist_UniqueSpecies[8]), "C://Users//bydav//Desktop//SpeciesOnly.csv") 
+
+
 # Remove bacteria but not fungi
 eukaryota <- subset(SpList_wSource, superkingdom == "Eukaryota")
 
