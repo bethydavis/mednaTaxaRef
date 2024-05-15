@@ -632,14 +632,15 @@ saveRDS(clean_eukaryota, file = "C:\\Users\\bydav\\Desktop\\GNREukaryota_NoFungu
 ## 5/14 - redoing the species list cleaning to test something
 
 ```{r fulllist_sourceloop}
+# loading in appropriate/required libraries
 library(stringr)
 library(stringi)
 library(beepr)
 
-# Loading in the saved object from 3/8 created after joining the meta species list and GBIF list
+# Loading in the saved object from March 8 created after joining the meta species list and GBIF list
 updatedeukarya <- updatedspecieslist
 
-# Force encoding
+# Force data object to encode as latin-ascii
 updatedeukarya$Species_Name<- stri_trans_general(updatedeukarya$Species_Name, "latin-ascii")
 
 # Remove all symbols/characters that aren't spaces or alphanumeric characters - from rominger_codathon
@@ -647,10 +648,10 @@ updatedeukarya$Species_Name <- gsub("[^[:alnum:][:space:]]", "", updatedeukarya$
 
 updatedeukarya <- updatedeukarya[!grepl('sp\\.|cf\\.|f\\.', updatedeukarya$Species_Name), , drop = FALSE]
 
-#There are several entries that contain varieties of 'unknown' that we want to remove. Define vector of strings
+# There are several entries that contain varieties of 'unknown' that we want to remove. Define vector of strings
 exeunt <- c('Unknown', 'Unidentified', 'Undetermined', 'Undetermiend')
 
-  #remove rows that contain any string in the vector in the team column
+# remove rows that contain any string in the vector in the team column
 updatedeukarya <- updatedeukarya[!grepl(paste(exeunt, collapse='|'), updatedeukarya$Species_Name),]
 
 # Trim leading and tailing spaces
@@ -663,7 +664,6 @@ updatedeukarya <- updatedeukarya[grepl('\\s+', updatedeukarya$Species_Name),]
 updatedeukarya$Species_Name = str_to_lower(updatedeukarya$Species_Name)
 updatedeukarya$Species_Name = str_to_sentence(updatedeukarya$Species_Name)
 
-
 # Create a list of unique names
 filter2 <- unique(updatedeukarya$Species_Name)
 
@@ -671,7 +671,7 @@ filter2 <- unique(updatedeukarya$Species_Name)
 metadf2 <- data.frame(matrix(ncol = 2, nrow = 0))
 colnames(metadf2) <- c('SpeciesBinomial', 'SourceList')
 
-# Consolidate sources
+# Consolidate sources into single column list
 for (i in filter2) {
   tempsearch <- updatedeukarya[updatedeukarya$Species_Name == i, ]
   tempsource <- list(c(tempsearch$Source))
@@ -679,9 +679,10 @@ for (i in filter2) {
   metadf2[nrow(metadf2), ]$SourceList <- tempsource
 }
 
-
+# inform when finished running
 beep(sound = "wilhelm")
 
+# rename object for easier reference later
 speciesqc <- metadf2
 ```
 
@@ -698,7 +699,7 @@ speciesqc[speciesqc$SpeciesBinomial == "Papilio canadensis x glaucus", ]
 # Overwrite
 speciesqc[24158, 1] = "Papilio canadensis glaucus"
 
-# Convert the SourceList column from lists to character strings, and remove the 'c'
+# Convert the SourceList column from lists to character strings, and remove the 'c' (mitigates future read issues)
 speciesqc$SourceList <- as.character(speciesqc$SourceList)
 speciesqc$SourceList <- gsub('c', '', speciesqc$SourceList)
 
@@ -718,11 +719,13 @@ splitNames <- split(speciesqc$SpeciesBinomial,
                     ceiling(seq_along(speciesqc$SpeciesBinomial)/1000))
 
 
-# make a list to populate with results from `gnr_resolve`
+# make an empty list object equal to populate with results from `gnr_resolve`
 xclean <- vector('list', length(splitNames))
 
+# identify which database sources for gnr_resolve to search from - these numbers come from the gnr_resolve documentation
 sources <- c(4, 9, 11, 12, 44)
 
+# for each list in xclean, run the gnr_resolver to search the selected databases for species taxonomy matches and keep only the best match. Results will populate into xclean
 for(i in 1:length(xclean)) {  
   # `preferred_data_source = 4` is for NCBI
   # set `http = 'post'` for large query
@@ -737,8 +740,6 @@ for(i in 1:length(xclean)) {
 }
 beep(sound = "wilhelm")
 
-
-sourcefull <- gnr_datasources()
 # Save as an intermediate RDS
 saveRDS(xclean, file = "C:\\Users\\bydav\\Desktop\\GNRSpListresults_May2024.RDS")
 ```
@@ -780,7 +781,7 @@ splist_19s <- rbind(splist02, splist04, splist09, splist10, splist11, splist14, 
 
 splist_17s <- rbind(splist01, splist03, splist05, splist06, splist07, splist08, splist12, splist13, splist15, splist16, splist17)
 
-
+# trim off excess columns
 splist_19trim <- subset(splist_19s[1:17])
 
 splist <- rbind(splist_17s, splist_19trim)
@@ -808,6 +809,8 @@ splist_UniqueSpecies$phylum <- "na"; splist_UniqueSpecies$class <- "na";
 splist_UniqueSpecies$order <- "na"; splist_UniqueSpecies$family <- "na";
 splist_UniqueSpecies$genus <- "na"; splist_UniqueSpecies$species <- "na"
 
+# taken from Erin's code, checks for empty taxonomy cells
+# set counter
 s=1
 for (s in 1:dim(splist_UniqueSpecies)[1]) {
   paths <- unlist(strsplit(splist_UniqueSpecies$classification_path[s], "|", fixed=TRUE))
@@ -874,22 +877,22 @@ saveRDS(SpList_wSource, file = "C://Users//bydav//Desktop//GNRMaineSpecies_May20
 #write.csv(subset(splist_UniqueSpecies[8]), "C://Users//bydav//Desktop//SpeciesOnly.csv") 
 
 
-# Remove bacteria but not fungi
+# Remove bacteria but keep fungi
 eukaryota <- subset(SpList_wSource, superkingdom == "Eukaryota")
 
 # Save output without bacteria
 saveRDS(eukaryota, file = "C:\\Users\\bydav\\Desktop\\GNREukaryotaList_May2024.RDS")
 
-# Remove fungi but not bacteria
+# Remove fungi but keep bacteria
 nofungusamongus <- subset(SpList_wSource, kingdom != "Fungi")
 
 # Save output without fungi
 saveRDS(nofungusamongus, file = "C:\\Users\\bydav\\Desktop\\GNRNoFungusSpeciesList_May2024.RDS")
 
-# Remove bacteria and not fungi
+# Remove bacteria and fungi
 clean_eukaryota <- subset(eukaryota, kingdom != "Fungi")
 
-# Save output without bacteria
+# Save output without bacteria or fungi
 saveRDS(clean_eukaryota, file = "C:\\Users\\bydav\\Desktop\\GNREukaryota_NoFungus_May2024.RDS")
 ```
 
