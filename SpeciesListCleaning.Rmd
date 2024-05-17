@@ -896,6 +896,47 @@ clean_eukaryota <- subset(eukaryota, kingdom != "Fungi")
 saveRDS(clean_eukaryota, file = "C:\\Users\\bydav\\Desktop\\GNREukaryota_NoFungus_May2024.RDS")
 ```
 
+Make another set of files, differentiating vertebrates, invertebrates, plants, and other
+
+```{r}
+library(dplyr)
+
+# Finding a significant portion of species names that were gnr_resolved but did not find full taxonomies, select these out
+untaxonomied <- GNRMaineSpecies_May2024 %>% filter(classification_path =="")
+
+saveRDS(untaxonomied, file = "C:\\Users\\bydav\\Desktop\\UnTaxonomiedSpecies_May2024.RDS")
+write.csv(untaxonomied, "C:\\Users\\bydav\\Desktop\\UnTaxonomiedSpecies_May2024.csv")
+
+# Now select the ones with taxonomy
+taxonomied <- GNRMaineSpecies_May2024 %>% filter(classification_path !="")
+saveRDS(taxonomied, file = "C:\\Users\\bydav\\Desktop\\GNRMaineTaxonomiedSpecies_May2024.RDS")
+write.csv(taxonomied, "C:\\Users\\bydav\\Desktop\\GNRMaineTaxonomiedSpecies_May2024.csv")
+
+
+# Create a df with only plants (normally Plantae would be enough, but many rows use Viridiplantae instead)
+plants <- GNRMaineSpecies_May2024 %>% filter(grepl('Plantae|Viridiplantae', classification_path))
+saveRDS(plants, file = "C:\\Users\\bydav\\Desktop\\GNRPlants_May2024.RDS")
+write.csv(plants, "C:\\Users\\bydav\\Desktop\\GNRPlants_May2024.csv")
+
+
+# Create a df with only vertebrates
+vertebrates <- GNRMaineSpecies_May2024 %>% filter(grepl('Vertebrata', classification_path))
+saveRDS(vertebrates, file = "C:\\Users\\bydav\\Desktop\\GNRVertebrate_May2024.RDS")
+write.csv(vertebrates, "C:\\Users\\bydav\\Desktop\\GNRVertebrates_May2024.csv")
+
+
+# Create a df with only invertebrates (aka all animals except the vertebrates)
+invertebrates <- GNRMaineSpecies_May2024 %>% filter(grepl('Metazoa|Animalia', classification_path), !grepl('Vertebrata', classification_path), grepl('Metazoa', kingdom))
+saveRDS(invertebrates, file = "C:\\Users\\bydav\\Desktop\\GNRInvertebrate_May2024.RDS")
+write.csv(invertebrates, "C:\\Users\\bydav\\Desktop\\GNRInvertebrates_May2024.csv")
+
+
+
+# Create a df of taxonomied rows that are not plants, verts, or inverts
+other <- taxonomied %>% filter(!grepl('Plantae|Viridiplantae|Metazoa|Animalia|Vertebrata', classification_path))
+saveRDS(other, file = "C:\\Users\\bydav\\Desktop\\GNRNoPlantNoAnimal_May2024.RDS")
+write.csv(other, "C:\\Users\\bydav\\Desktop\\GNRNoPlantNoAnimal_May2024.csv")
+```
 
 
 
