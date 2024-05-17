@@ -1,0 +1,254 @@
+---
+title: "blsd"
+author: "Beth Davis"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### DEFINE THE FOLLOWING VARIABLES FOR YOUR ANALYSIS
+## locus choices are: (GENES) "ATP6" "ATP8"  "COI"  "COII"  "COIII"  "CYTB"  "ND1"  "ND2"  "ND3"  "ND4" "ND4L" "ND5"  "ND6"  and (OTHER FEATURES) "rRNA_12S" "rRNA_16S" "D_loop" "tRNA_Ala" "tRNA_Arg" "tRNA_Asn" "tRNA_Asp" "tRNA_Cys" "tRNA_Gln" "tRNA_Glu" "tRNA_Gly" "tRNA_His" "tRNA_Ile" "tRNA_Leu" "tRNA_Lys" "tRNA_Met" "tRNA_Phe" "tRNA_Pro" "tRNA_Ser" "tRNA_Thr" "tRNA_Trp" "tRNA_Tyr" "tRNA_Val"
+## species_list must have "search_name" as the first column and it must be a binomial species name
+```{r define_variables}
+entrez_key <- "b0bb38eec6353c9905498f6f2b9429b7e808" #GET YOUR OWN ENTREZ KEY AND PUT IT HERE!
+locus = "COI" #name of target locus, your choices are 
+output_folder <- "C://Users//bydav//Desktop" #name of your output folder every time
+species_list <- readRDS("C://Users//bydav//Desktop//MaineSpeciesList.RDS") # your species list
+#colnames(species_list)<- c("species") 
+#order_list <- read.csv("workingfiles/MetazoaSpeciesByOrder_2023-09-19.csv") # list of vertebrate orders
+```
+
+### LOAD PACKAGES, DEFINE TERM, AND CREATE DATABASE SKELETONS. Note - you need to locally install an older version of genbankr because it's not up to date on Bioconductor - go here https://bioconductor.org/packages/3.16/bioc/html/genbankr.html and download the appropiate binary then go to your terminal and "R CMD INSTALL pathtobinary.tar.gz". There will be other dependencies that you'll have to install too. Sorry. The genbankr authors say they will fix this by April
+```{r load_packages_and_terms}
+install.packages("taxizedb")
+install.packages("rentrez")
+install.packages("AnnotationBustR")
+install.packages("reutils")
+install.packages("ape")
+install.packages("ggplot2")
+install.packages("taxizedb")
+
+
+
+library(taxizedb) #checks taxonomy
+library(rentrez) #queries ENTREZ databases and downloads accessions
+library(AnnotationBustR) #finds longest accessions, slice genes from mitogenomes
+library(reutils) #other packages need it
+library(ape) #convert fasta, fastq, etc.
+library(ggplot2) #plots
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("Biostrings")
+library(Biostrings)
+library(BiocManager)
+
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("GenomicFeatures")
+BiocManager::install("VariantAnnotation")
+
+library(GenomicFeatures)
+library(VariantAnnotation)
+library(genbankr) ##genbankr is not functioning on latest Bioconductor, install locally instead
+
+set_entrez_key(entrez_key) #set the Entrez API key
+#dir.create(output_folder)
+
+# create search terms for ENTREZ
+data(mtDNAterms) #AnnotationBustR's list of synonyms for different loci
+#more_12Ssynonyms <- data.frame(Locus="rRNA_12S", Type="rRNA", Name= "small ribosomal RNA subunit RNA") # other synonyms that we find go here and get added to AnnotationBustR's list
+#mtDNAterms <- rbind(mtDNAterms, more_12Ssynonyms) #format
+is_mtgene <- locus %in% c("ATP6", "ATP8",  "COI",  "COII",  "COIII",  "CYTB",  "ND1",  "ND2",  "ND3",  "ND4", "ND4L", "ND5",  "ND6") #check whether the locus is a gene or other feature, needed for the mitogenome scrape
+target_locus_synonyms <- mtDNAterms[mtDNAterms$Locus==locus,] #the target synonyms
+target_locus_synonyms$Terms <- paste0("OR ", target_locus_synonyms$Name, "[TITL]") # format for ENTREZ search terms
+target_locus_synonyms$Terms[1] <- paste0("AND (", target_locus_synonyms$Name[1], "[TITL]") # first term starts with "AND ("
+target_locus_synonyms$Terms[dim(target_locus_synonyms)[1]] <- paste0("OR ", target_locus_synonyms$Name[dim(target_locus_synonyms)[1]], "[TITL])") #last term ends with a ")"
+target_locus_searchterm <- paste(as.vector(target_locus_synonyms$Terms), collapse=" ") # the big ENTREZ search term
+
+# create empty dataframes to fill in during loops
+tax_df <- as.data.frame(matrix(nrow=1, ncol=9, dimnames=list(NULL, c("tax_query", "superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species")))) # taxonomy skeleton
+order_seqs <- as.data.frame(matrix(nrow=1, ncol=8, dimnames=list(NULL, c("superkingdom", "kingdom", "phylum", "class", "order", "species_id", "ids_mitogenome","ids_target")))) #  missing orders skeleton
+a02_REFDB <- data.frame(seq_header=NA, sequence=NA, seq_accession=NA, type=NA, species=NA) #create reference database skeleton
+t = 1 # taxonomy for species list loop counter
+u = 1  # taxonomy for order sequences loop counter
+o = 1 # missing orders loop counter
+j = 1 # missing orders species loop counter
+i = 1 # ENTREZ search loop counter
+s = 1 # sequence scrape loop counter
+m = 1 # mitogenome scrape loop counter
+z = 1 # output format loop counter
+d = 1 # dada2 taxonomy counter
+```
+
+
+# Search Entrez for mitogenome and target sequences for each species. If you run into an HTTP 500 error, just start the loop again and you should be good.
+```{r search_entrez}
+i = 25006 
+while (i <= dim(species_list)[1]){
+  cat("\r", "finding Genbank accessions & mitogenomes for species", i, "of", dim(species_list)[1]) #counter
+  # define search terms for species
+  search_name <- paste0(species_list$species[i],"[ORGN]") #format species name for ENTREZ search
+  search_term <- paste(search_name, target_locus_searchterm, collapse=" ") #mash species & locus terms into one search term
+  # search ENTREZ for mitogenomes and then for accessions
+   tryCatch(entrez_search(db="nucleotide", term <- paste(search_name, "AND mitochondrion[TITL] AND complete genome[TITL]"), retmax=9999)) -> mitogenomes # search mitogenomes
+      if(class(mitogenomes)[1] != "try-catch") {
+        species_list$n_mitogenome[i] <-mitogenomes$count[2] #add mitogenome count names dataframe
+        species_list$ids_mitogenome[i] <-paste(mitogenomes$ids, collapse="|") #add mitogenome ids to name dataframe
+            tryCatch(entrez_search(db="nucleotide", term <- search_term, retmax=9999)) -> targets # search accessions
+                if(class(targets)[1] != "try-catch") {
+                    species_list$n_target[i] <-targets$count
+                    species_list$ids_target[i] <- paste(targets$ids, collapse="|")
+                }
+            }
+  Sys.sleep(0.5) #slow down request to the Entrez server or you'll get kicked out
+  # reset loop variables
+  mitogenomes <- "na"
+  targets <- "na"
+  search_name <- "na"
+  search_term <- "na"
+  i <- i + 1
+}
+
+#order_seqs <- order_seqs[,colnames(species_list)] # format the order_seqs dataframe to add to the species_list datafame
+#species_list<- rbind(species_list, order_seqs) # add the order_seqs dataframe to the a03BESTANAMES dataframe
+species_list$n_target <- as.numeric(species_list$n_target) #format
+species_list$n_mitogenome <- as.numeric(species_list$n_mitogenome) #format
+row.names(species_list) = NULL # format
+write.csv(species_list, file.path(output_folder, "COIspecies_list_v1.csv"), row.names = FALSE) # save the mitogenome and target accessions ids for scraping
+```
+
+
+## Scrape your target locus out of mitogenomes identified in the Entrez search. Note - I need to fix some things here (the loop breaks on parsing errors). If you get stuck, just "m=m+1" and re-start loop
+```{r scrape_mitogenomes}
+while (m <= dim(species_list)[1]) { #for every good species name
+    cat("\r","scraping mitogenomes for species", m, "of", dim(species_list)[1])
+    mito_ids <- "NA"
+    #if (species_list$n_mitogenome[m]>0 && species_list$n_mitogenome[m]<20) { #if mitogenomes available and <20
+        mito_ids <- unlist(strsplit(species_list$ids_mitogenome[m], split="\\|")) #format ids
+   # } #else if (species_list$n_mitogenome[m]>20) { #if >20 mitogenomes, subsample 20 mitogenomes randomly
+        #mito_ids <- sample(unlist(strsplit(species_list$ids_mitogenome[m], split="\\|")),20) # format ids  
+    #}
+   
+    if (is.na(mito_ids[1]) == FALSE) { #if there are mitogenome ids for species m
+        mito_accessions <- tryCatch(entrez_fetch(mito_ids, db="nuccore", rettype="acc")) #ask ENTREZ for id's accession
+        if (class(mito_accessions) != "try-catch"){ #if no api error
+            mito_accessions <- unlist(strsplit(mito_accessions, split="\n")) #format accession numbers
+            for (n in 1:length(mito_accessions)){ # loop through and scrape each mitogenome accession
+              new_row <- c(paste("Unparsed mitochondrion", mito_accessions[n], sep=" "), "na", mito_accessions[n], "scrape", species=species_list$search_name[m]) #blank row for each accession
+              gb <- tryCatch(readGenBank(GBAccession(mito_accessions[n]))) # get the Genbank annotation for accession
+                if (class(gb) != "try-catch"){ #if no error in getting gb
+                  if (is_mtgene==FALSE) {# if target locus is not a gene, look in otherFeatures()
+                  target_feature <- tryCatch(which(otherFeatures(gb)$product %in% as.character(target_locus_synonyms$Name))) # find target locus annotation metadata 
+                    if (class(target_feature) != "try-catch"){
+                      if(length(target_feature) > 0) { # if target feature is found
+                        target_range <- tryCatch(otherFeatures(gb)@ranges[target_feature]) #extract the target range info
+                          if(class(target_range) != "try-catch"){
+                            target_seq <- tryCatch(subseq(getSeq(gb), start=target_range@start, width=target_range@width)) #scrape seq
+                              if(class(target_seq) != "try-catch"){
+                                scraped_seq <- paste(target_seq) #format
+                                new_row <- c(paste(names(target_seq),"mitochondrion", mito_accessions[n], sep=" "), paste(target_seq), mito_accessions[n], "scrape", species_list$search_name[m]) #update information
+                            }
+                          }
+                      }
+                    }
+                  }
+                  else if (is_mtgene==TRUE){ # if target locus is a gene, look in gene()
+                    target_feature <- tryCatch(which(genes(gb)$gene %in% as.character(target_locus_synonyms$Name))) # find target locus annotation metadata 
+                    if (class(target_feature) != "try-catch"){
+                      if(length(target_feature) > 0) { # if target feature is found
+                        target_range <- tryCatch(genes(gb)@ranges[target_feature])  #extract the target range info
+                          if(class(target_range) != "try-catch"){
+                            target_seq <- tryCatch(subseq(getSeq(gb), start=target_range@start, width=target_range@width)) #scrape seq
+                              if(class(target_seq) != "try-catch"){
+                                scraped_seq <- paste(target_seq) #format
+                                new_row <- c(paste(names(target_seq),"mitochondrion", mito_accessions[n], sep=" "), paste(target_seq), mito_accessions[n], "scrape", species_list$search_name[m]) #update information
+                            }
+                          }
+                      }
+                    }
+                  }
+                }
+              a02_REFDB <- rbind(a02_REFDB, new_row) # update the database
+              rm(gb, target_feature, target_range, target_seq, scraped_seq, new_row) # reset n loop variables
+              Sys.sleep(0.5) #slow down request to the Entrez server or you'll get kicked out
+            } # close n loop (each "n" mitogenome accession per "m" species)
+        }
+    }
+    m=m+1 #update species m variable
+    rm(mito_ids, mito_accessions) # reset loop variables
+    Sys.sleep(0.5) #slow down request to the Entrez server or you'll get kicked out
+} # close for each species m loop
+
+a02_REFDB <- a02_REFDB[-1,] #format - remove the top row of NAs
+a02_REFDB_unparsed <- subset(a02_REFDB, sequence == "na")
+a02_REFDB_parsed <- subset(a02_REFDB, sequence != "na")
+write.csv(a02_REFDB_parsed, file.path(output_folder, "a02_REFDB.csv"), row.names=FALSE)
+```
+
+## De-duplicate the reference database, but keep track of duplicate accessions/scrapes in Names
+```{r remove_duplicates}
+a03_UNIQUEDB <- a02_REFDB_parsed[!duplicated(a02_REFDB_parsed$sequence),] #remove duplicates
+for (z in  1:dim(a03_UNIQUEDB)[1]){ # for every row in the unique db file
+  dups <- subset(a02_REFDB_parsed, sequence == a03_UNIQUEDB$sequence[z]) # find identical sequences in the full db file 
+  a03_UNIQUEDB$duplicate_accessions[z] <- paste(dups$seq_accession, collapse = "|") # paste all those accessions together into a new unique db field
+  a03_UNIQUEDB$duplicate_species[z] <- paste(dups[!duplicated(dups$species),"species"], collapse = "|")
+  z=z+1
+}
+row.names(a03_UNIQUEDB) <- NULL #format
+write.csv(a03_UNIQUEDB, file.path(output_folder, "a03_UniqueRefDB.csv"), row.names=FALSE)
+```
+
+## Format the reference library for dada2 assignTaxonomy()
+```{r format_dada2}
+a04_UNIQUEDBdada <- merge(x=a03_UNIQUEDB, y=species_list, by.x="species", by.y="search_name", all.x=TRUE, all.y=FALSE) 
+my_cols <- c("phylum", "class","order","family","genus","species.y")
+a04_UNIQUEDBdada$header <- do.call(paste, c(a04_UNIQUEDBdada[my_cols], sep = ";"))
+a04_UNIQUEDBdada$header2 <- paste(">",a04_UNIQUEDBdada$header, sep="")
+REFDB_dada <- a04_UNIQUEDBdada[,c("header2","sequence")]
+write.table(REFDB_dada, file.path(output_folder, "a04_REFDBdada.fasta"), sep="\n", col.names=FALSE, row.names=FALSE, quote=FALSE)
+```
+
+## Summarize taxonomic & reference sequence results for species in the original list
+```{r summarize_species}
+#Count reference sequences by species
+counts_species <- as.data.frame(table(a03_UNIQUEDB$species)) #count the number of unique reference sequences per species
+colnames(counts_species) <- c("species", "n_unique_seqs") #format
+species_list <- merge(species_list, counts_species, by.x= "search_name", by.y="species", all.x=TRUE, all.y=TRUE) # update the summary database with reference sequence counts
+a00_SPECIES_SUMMARY <- species_list[species_list$search_name %in% species_list$search_name,]
+
+#add in duplicates information to BESTNAMES
+a00_SPECIES_SUMMARY$dup_accessions <- "na"
+a00_SPECIES_SUMMARY$dup_species <- "na"
+a00_SPECIES_SUMMARY$dup_species_n <- "na"
+
+for (b in 1:dim(a00_SPECIES_SUMMARY)[1]){
+  dup_accessions <- paste(a03_UNIQUEDB[a03_UNIQUEDB$species == a00_SPECIES_SUMMARY$search_name[b], "duplicate_accessions"], collapse="|")
+  dup_accessions <- unlist(strsplit(dup_accessions, split="\\|"))
+  dup_accessions_unique <- paste(unique(dup_accessions), collapse="|")
+  
+  dup_species <- paste(a03_UNIQUEDB[a03_UNIQUEDB$species == a00_SPECIES_SUMMARY$search_name[b], "duplicate_species"], collapse="|")
+  dup_species <- unlist(strsplit(dup_species, split="\\|"))
+  dup_species_unique <- unique(dup_species)
+  
+    if (length(dup_accessions)>0){
+  a00_SPECIES_SUMMARY$dup_accessions[b]<-dup_accessions_unique
+  a00_SPECIES_SUMMARY$dup_species[b]<- paste(dup_species_unique, collapse="|")
+  a00_SPECIES_SUMMARY$dup_species_n[b]<- length(dup_species_unique)
+  }
+  
+  #reset variables
+  rm(dup_accessions)
+  rm(dup_species)
+}
+
+a00_SPECIES_SUMMARY$n_all_seqs <- a00_SPECIES_SUMMARY$n_mitogenome + a00_SPECIES_SUMMARY$n_target
+n_species_withnames <- dim(a00_SPECIES_SUMMARY)[1]
+n_species_withnamesANDtargets <- length(which(a00_SPECIES_SUMMARY$n_all_seqs>0))
+n_species_nonames <- dim(species_list_missing)[1]
+write.csv(a00_SPECIES_SUMMARY, file.path(output_folder, "a00_SPECIES_SUMMARY.csv"), row.names=FALSE)
+
+n_species_withnames; n_species_withnamesANDtargets; n_species_nonames
+```
