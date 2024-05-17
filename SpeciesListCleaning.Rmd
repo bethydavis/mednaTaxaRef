@@ -636,6 +636,7 @@ saveRDS(clean_eukaryota, file = "C:\\Users\\bydav\\Desktop\\GNREukaryota_NoFungu
 library(stringr)
 library(stringi)
 library(beepr)
+library(dplyr)
 
 # Loading in the saved object from March 8 created after joining the meta species list and GBIF list
 updatedeukarya <- updatedspecieslist
@@ -899,7 +900,6 @@ saveRDS(clean_eukaryota, file = "C:\\Users\\bydav\\Desktop\\GNREukaryota_NoFungu
 Make another set of files, differentiating vertebrates, invertebrates, plants, and other
 
 ```{r}
-library(dplyr)
 
 # Finding a significant portion of species names that were gnr_resolved but did not find full taxonomies, select these out
 untaxonomied <- GNRMaineSpecies_May2024 %>% filter(classification_path =="")
