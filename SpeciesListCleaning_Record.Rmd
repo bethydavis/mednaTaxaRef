@@ -944,12 +944,3 @@ write.csv(other, "C:\\Users\\bydav\\Desktop\\GNRNoPlantNoAnimal_May2024.csv")
 ```
 
 
-
-
-
-
-
-
-
-
-
