@@ -46,7 +46,7 @@ familylist <- read.csv("C:/Users/bydav/Desktop/RefDB_Dev/input/MetazoaSpeciesByF
 
 # Set up output folder and version
   # Set version and date for each time the analysis script is run - SET THIS EVERY TIME
-versiondate <- c("2-May17-2024/")
+versiondate <- c("3-May19-2024/")
   # base output folder
 base_outputs <- "C:/Users/bydav/Desktop/RefDB_Dev/output"
 

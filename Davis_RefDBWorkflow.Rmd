@@ -40,7 +40,7 @@ tRNA_Thr   tRNA_Trp    tRNA_Tyr    tRNA_Val
 The mitogenome scrape also requires us to check if the target locus is a gene or a different feature
 ```{r search_term}
 # Choose locus
-locus = "rRNA_12S"
+locus = "COI"
 
 # Check whether the locus is a gene or other feature
 is_mtgene <- locus %in% c("ATP6", "ATP8",  "COI",  "COII",  "COIII",  "CYTB",  "ND1",  "ND2",  "ND3",  "ND4", "ND4L", "ND5",  "ND6") 
@@ -86,7 +86,7 @@ This loop takes the input species list and the searchterm to query GenBank for m
 The loop will likely get stuck from an HTTP 500 error. If that happens, set i to whatever row number the error occurred on, and restart the loop
 ```{r accession_counter}
 # Isolate the counter for sanity's sake (aka so you can change it without running the entire loop on accident if need be)
-i = 288
+i = 15047
 ```
 
 
@@ -124,6 +124,8 @@ while (i <= dim(specieslist)[1]){
   search_term <- "na"
   i <- i + 1
 }
+
+beep(sound = "wilhelm")
 ```
 
 
@@ -261,7 +263,7 @@ write.csv(interim_REFDB_parsed, file.path(path_outputs, "interim_REFDB.csv"), ro
 To scrape the accession sequences from our species list and add them to the interim_REFDB object, prep the loop with a counter and then run the loop
 
 ```{r accessions_counter}
-s = 24493
+s = 21142
 ```
 
 ```{r scrape_accessions}
@@ -307,7 +309,9 @@ while (s <= dim(specieslist)[1]){
     tempDB <-"na"
     # Slow request
     Sys.sleep(1)
- }
+}
+
+beep(sound = "wilhelm")
 ```
 
 ## 5/18/2024 Scraping Note
@@ -348,6 +352,12 @@ missingorders <- setdiff(ordercompare$Order, order_repdf$order_rep)
 
 # Trim a new version of the orderlist with all columns but only the orders we're missing
 orders_missing <- orderlist[grepl(paste(missingorders, collapse='|'), orderlist$order),]
+
+# Save the list of missing orders (useful in case you're using the same species list for multiple primers)
+write.csv(orders_missing, file.path(path_outputs, "StepG1Output.csv"), row.names=FALSE)
+
+# Also create an empty dataframe for order_seqs, which is what the representatives of the missing orders will fill their sequences into
+order_seqs <- as.data.frame(matrix(nrow=1, ncol=8, dimnames=list(NULL, c("superkingdom", "kingdom", "phylum", "class", "order", "species_id", "ids_mitogenome","ids_target"))))
 ```
 
 
@@ -362,7 +372,7 @@ Like Step R3, it is possible that an HTTP 500 error will occur while it runs. If
 
 Prepare the loop by setting the counter
 ```{r missingorder_counter}
-o = 14
+o = 3
 ```
 
 
@@ -543,6 +553,8 @@ for (u in 1:length(taxonomies_orderseqs)) {
 
 # Fill in the search_name column by removing the species code from the species column (only keeping the binomial)
 order_seqs$search_name <- data.frame(do.call(rbind, strsplit(order_seqs$species, split = "_")))[,1]
+
+beep(sound = "wilhelm")
 ```
 
 Save this interim file in case you need it for the future
@@ -622,10 +634,8 @@ For this loop, we repeat the accession scrape as we did for the species list, bu
 
 As usual, set a counter
 
-### NTS:
-114 - says could not open the fasta file
 ```{r orderrep_accessions_counter}
-s = 115
+s = 1
 
 
 order_seqs$ids_target <- as.character(order_seqs$ids_target)
@@ -676,6 +686,8 @@ while (s <= dim(order_seqs)[1]){
     #slow down request to the Entrez server or you'll get kicked out
     Sys.sleep(1)
  }
+
+beep(sound = "wilhelm")
 
 ```
 
@@ -765,11 +777,11 @@ row.names(dedup_REFDB) <- NULL
 
 When the deduplicated database is done, save it to the output
 ```{r save_dedup}
-write.csv(dedup_REFDB, file.path(path_outputs, "12S_REFDB_dedup"), row.names=FALSE)
+write.csv(dedup_REFDB, file.path(path_outputs, "COI_REFDB_dedup.csv"), row.names=FALSE)
 ```
 
 
-## *Step C2: Format for DADA2
+## Step C2: Format for DADA2
 
 Format the reference library for dada2 assignTaxonomy()
 ```{r format_dada2}
@@ -790,5 +802,5 @@ REFDB_dada_merge$header2 <- paste(">",REFDB_dada_merge$header, sep="")
 REFDB_dada <- REFDB_dada_merge[,c("header2","sequence")]
 
 # Save the dada-formatted reference database
-write.table(REFDB_dada, file.path(path_outputs, "12S_REFDB.fasta"), sep="\n", col.names=FALSE, row.names=FALSE, quote=FALSE)
+write.table(REFDB_dada, file.path(path_outputs, "COI_REFDB.fasta"), sep="\n", col.names=FALSE, row.names=FALSE, quote=FALSE)
 ```
