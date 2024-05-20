@@ -86,7 +86,7 @@ This loop takes the input species list and the searchterm to query GenBank for m
 The loop will likely get stuck from an HTTP 500 error. If that happens, set i to whatever row number the error occurred on, and restart the loop
 ```{r accession_counter}
 # Isolate the counter for sanity's sake (aka so you can change it without running the entire loop on accident if need be)
-i = 15047
+i = 1
 ```
 
 
@@ -137,7 +137,7 @@ specieslist$n_mitogenome <- as.numeric(specieslist$n_mitogenome)
 row.names(specieslist) = NULL 
 
 # Save output
-write.csv(specieslist, file.path(path_outputs, "12SRefDB_Step3Output.csv"), row.names = FALSE)
+write.csv(specieslist, file.path(path_outputs, "StepR3Output.csv"), row.names = FALSE)
 ```
 
 
@@ -145,16 +145,9 @@ write.csv(specieslist, file.path(path_outputs, "12SRefDB_Step3Output.csv"), row.
 
 This loop takes the ids_mitogenome values found in Step R3 and, so long as there are at least 1, takes at most 20 mitogenomes, uses Genbank's information on the locus to scrape out the target range, and then appends to the interim_REFDB.
 
-First create a skeleton for the interim_REFDB, and set a counter
-
-```{r a02_creation}
-# Create empty dataframe for sequence results to fill into
-interim_REFDB <- data.frame(seq_header=NA, sequence=NA, seq_accession=NA, type=NA, species=NA) 
-```
-
 ```{r mitogenome_counter}
 # Set counter
-m = 365
+m = 1
 ```
 
 The actual loop
@@ -262,8 +255,15 @@ write.csv(interim_REFDB_parsed, file.path(path_outputs, "interim_REFDB.csv"), ro
 
 To scrape the accession sequences from our species list and add them to the interim_REFDB object, prep the loop with a counter and then run the loop
 
+First create a skeleton for the interim_REFDB, and set a counter
+
+```{r interim_creation}
+# Create empty dataframe for sequence results to fill into
+interim_REFDB <- data.frame(seq_header=NA, sequence=NA, seq_accession=NA, type=NA, species=NA) 
+```
+
 ```{r accessions_counter}
-s = 21142
+s = 1
 ```
 
 ```{r scrape_accessions}
@@ -312,6 +312,11 @@ while (s <= dim(specieslist)[1]){
 }
 
 beep(sound = "wilhelm")
+```
+
+Save this interim_REFDB, especially if you won't proceed to doing the missing order sampling
+```{r save_interim}
+write.csv(interim_REFDB, file.path(path_outputs, "interim_REFDB.csv"), row.names=FALSE)
 ```
 
 ## 5/18/2024 Scraping Note
@@ -372,7 +377,7 @@ Like Step R3, it is possible that an HTTP 500 error will occur while it runs. If
 
 Prepare the loop by setting the counter
 ```{r missingorder_counter}
-o = 3
+o = 1
 ```
 
 
@@ -637,7 +642,6 @@ As usual, set a counter
 ```{r orderrep_accessions_counter}
 s = 1
 
-
 order_seqs$ids_target <- as.character(order_seqs$ids_target)
 ```
 
@@ -688,18 +692,33 @@ while (s <= dim(order_seqs)[1]){
  }
 
 beep(sound = "wilhelm")
+```
 
+Save this interim_REFDB
+```{r save_interim}
+write.csv(interim_REFDB, file.path(path_outputs, "interim_REFDB.csv"), row.names=FALSE)
 ```
 
 
 ## *Step G6: Summarize Taxonomy and Sequence Results
 
-Summarize taxonomic & reference sequence results for species in the original list
+This chunk is working well to count the number of unique sequences found
 ```{r summarize_species}
-#Count reference sequences by species
-counts_species <- as.data.frame(table(dedup_REFDB$species)) #count the number of unique reference sequences per species
-colnames(counts_species) <- c("species", "n_unique_seqs") #format
-specieslist <- merge(specieslist, counts_species, by.x= "search_name", by.y="species", all.x=TRUE, all.y=TRUE) # update the summary database with reference sequence counts
+# Count number of unique reference sequences by species into a new df
+counts_species <- as.data.frame(table(dedup_REFDB$species)) 
+
+# Set column names
+colnames(counts_species) <- c("species", "n_unique_seqs") 
+
+# Add the number of unique sequences to the specieslist
+specieslist <- merge(specieslist, counts_species, by.x= "matched_name2", by.y="species", all.x=TRUE, all.y=TRUE)
+
+# Save the now fully updated specieslist as a metadata csv
+write.csv(specieslist, file.path(path_outputs, "StepG6_metasum.csv"), row.names=FALSE)
+```
+
+Need to fix this up with the changed names to get it properly working
+```{r}
 a00_SPECIES_SUMMARY <- specieslist[specieslist$matched_name2 %in% specieslist$matched_name2,]
 
 #add in duplicates information to BESTNAMES
@@ -730,10 +749,10 @@ for (b in 1:dim(a00_SPECIES_SUMMARY)[1]){
 a00_SPECIES_SUMMARY$n_all_seqs <- a00_SPECIES_SUMMARY$n_mitogenome + a00_SPECIES_SUMMARY$n_target
 n_species_withnames <- dim(a00_SPECIES_SUMMARY)[1]
 n_species_withnamesANDtargets <- length(which(a00_SPECIES_SUMMARY$n_all_seqs>0))
-n_species_nonames <- dim(species_list_missing)[1]
-write.csv(a00_SPECIES_SUMMARY, file.path(path_outputs, "a00_SPECIES_SUMMARY.csv"), row.names=FALSE)
+#n_species_nonames <- dim(species_list_missing)[1]
+#write.csv(a00_SPECIES_SUMMARY, file.path(path_outputs, "a00_SPECIES_SUMMARY.csv"), row.names=FALSE)
 
-n_species_withnames; n_species_withnamesANDtargets; n_species_nonames
+n_species_withnames; n_species_withnamesANDtargets#; n_species_nonames
 ```
 
 
@@ -777,7 +796,7 @@ row.names(dedup_REFDB) <- NULL
 
 When the deduplicated database is done, save it to the output
 ```{r save_dedup}
-write.csv(dedup_REFDB, file.path(path_outputs, "COI_REFDB_dedup.csv"), row.names=FALSE)
+write.csv(dedup_REFDB, file.path(path_outputs, "StepC1_dedup.csv"), row.names=FALSE)
 ```
 
 
