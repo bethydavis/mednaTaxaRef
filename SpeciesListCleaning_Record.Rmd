@@ -876,9 +876,10 @@ SpList_wSource <- inner_join(
   relationship = "many-to-many"
 )
 
-# Save full output
+# Save full output as RDS and csv
 saveRDS(SpList_wSource, file = "C://Users//bydav//Desktop//GNRMaineSpecies_May2024.RDS")
-  
+write.csv(SpList_wSource, file.path(path_outputs, "GNRMaineSpecies_May2024.csv"), row.names=FALSE)
+
 # pick out just the found species to test with Erin's workflow:
 #write.csv(subset(splist_UniqueSpecies[8]), "C://Users//bydav//Desktop//SpeciesOnly.csv") 
 
